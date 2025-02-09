@@ -1,33 +1,19 @@
-const users = new Map();
-
-const {
-  Client,
-  Collection,
-  ActivityType,
-  GatewayIntentBits,
-  Events,
-} = require('discord.js');
+const { Client, Collection, ActivityType, GatewayIntentBits, Events } = require('discord.js');
+const client = new Client({
+  intents: Object.values(GatewayIntentBits).reduce((acc, intent) => acc | intent, 0),
+});
 
 let config;
 try {
   config = require('./config/config.json');
 } catch {
-  console.error(
-    //@note: just in case user forget to rename the file.
-    `Missing config file, make sure to remove "EXAMPLE" from config file!\nExitting!`,
-  );
+  console.error(`Missing config file, make sure to remove "EXAMPLE" from config file!\nExiting!`);
   return;
 }
 
 const commandHandler = require('./src/utils/commandHandler');
 const eventHandler = require('./src/utils/eventHandler');
 const componentHandler = require('./src/utils/componentHandler');
-const client = new Client({
-  intents: Object.values(GatewayIntentBits).reduce(
-    (acc, intent) => acc | intent, //@note: found on stackoverflow, automatically getting every bot intent - in cost of performance.
-    0,
-  ),
-});
 const logHandler = require('./src/utils/logHandler');
 
 client.commands = new Collection();
@@ -36,14 +22,12 @@ client.cooldowns = new Collection();
 client.once(Events.ClientReady, async () => {
   logHandler.initialize(client);
 
-  //@note: just in case not really needed
   if (client.user.bot == false) {
     console.log('Token is incorrect!');
   }
 
   console.log(`Logged in as ${client.user.displayName}`);
 
-  //@note: sets bot's rich presence status
   client.user.setPresence({
     activities: [
       {
@@ -54,7 +38,6 @@ client.once(Events.ClientReady, async () => {
     status: 'online',
   });
 
-  //@note: initlaize handlers
   await commandHandler.loadCommands(client).catch(console.error);
   await eventHandler.loadEvents(client).catch(console.error);
   await componentHandler.loadComponents(client).catch(console.error);
@@ -62,13 +45,28 @@ client.once(Events.ClientReady, async () => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isCommand()) {
-    await commandHandler
-      .synchronizeCommands(interaction, client)
-      .catch(console.error);
+    await commandHandler.synchronizeCommands(interaction, client).catch(console.error);
   } else {
-    await componentHandler
-      .synchronizeComponent(interaction, client)
-      .catch(console.error);
+    await componentHandler.synchronizeComponent(interaction, client).catch(console.error);
+  }
+});
+
+// Add prefix command handling
+client.on(Events.MessageCreate, async (message) => {
+  if (message.author.bot || !message.content.startsWith(config.prefix)) return;
+
+  const args = message.content.slice(config.prefix.length).trim().split(/ +/);
+  const commandName = args.shift().toLowerCase();
+
+  const command = client.commands.get(commandName);
+
+  if (!command) return;
+
+  try {
+    await command.execute(message, args, client);
+  } catch (error) {
+    console.error(error);
+    message.reply('There was an error executing that command!');
   }
 });
 
